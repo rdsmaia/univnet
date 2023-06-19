@@ -8,14 +8,22 @@ def validate(hp, args, generator, discriminator, valloader, stft, writer, step, 
     discriminator.eval()
     torch.backends.cudnn.benchmark = False
 
+    # hop length between mel spectrograms and audio
+    mel_ar_token_ratio = hp.audio.latents_hop_length // hp.audio.hop_length
+
     loader = tqdm.tqdm(valloader, desc='Validation loop')
     mel_loss = 0.0
     for idx, (mel, audio) in enumerate(loader):
         mel = mel.to(device)
         audio = audio.to(device)
-        noise = torch.randn(1, hp.gen.noise_dim, mel.size(2)).to(device)
+        noise = torch.randn(1, hp.gen.noise_dim, mel.size(2)*mel_ar_token_ratio).to(device)
 
         fake_audio = generator(mel, noise)[:,:,:audio.size(2)]
+
+        if audio.size(2) > fake_audio.size(2):
+            audio = audio[:,:,:fake_audio.size(2)]
+        elif audio.size(2) < fake_audio.size(2):
+            fake_audio = fake_audio[:,:,:audio.size(2)]
 
         mel_fake = stft.mel_spectrogram(fake_audio.squeeze(1))
         mel_real = stft.mel_spectrogram(audio.squeeze(1))

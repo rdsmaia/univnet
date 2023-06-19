@@ -38,6 +38,9 @@ def train(rank, args, chkpt_path, hp, hp_str):
     optim_d = torch.optim.AdamW(model_d.parameters(),
         lr=hp.train.adam.lr, betas=(hp.train.adam.beta1, hp.train.adam.beta2))
 
+    # important: ratio between AR tokens and mel spectrograms
+    ar_tokens_to_mel_spec_ratio = hp.audio.latents_hop_length // hp.audio.hop_length
+
     githash = get_commit_hash()
 
     init_epoch = -1
@@ -126,7 +129,9 @@ def train(rank, args, chkpt_path, hp, hp_str):
 
             mel = mel.to(device)
             audio = audio.to(device)
-            noise = torch.randn(hp.train.batch_size, hp.gen.noise_dim, mel.size(2)).to(device)
+            noise = torch.randn(hp.train.batch_size,
+                                hp.gen.noise_dim,
+                                mel.size(2)*ar_tokens_to_mel_spec_ratio).to(device)
 
             # generator
             optim_g.zero_grad()

@@ -35,7 +35,7 @@ class MelFromDisk(Dataset):
                                  hp.audio.n_mel_channels, hp.audio.sampling_rate,
                                  hp.audio.mel_fmin, hp.audio.mel_fmax, center=False, device=device)
 
-        self.mel_segment_length = hp.audio.segment_length // hp.audio.hop_length
+        self.mel_segment_length = hp.audio.segment_length // hp.audio.latents_hop_length
         self.shuffle = hp.train.spk_balanced
 
         if train and hp.train.spk_balanced:
@@ -66,8 +66,8 @@ class MelFromDisk(Dataset):
         random.shuffle(self.mapping_weights)
 
     def my_getitem(self, idx):
-        wavpath, _, _ = self.meta[idx]
-        wavpath = os.path.join(self.data_dir, 'audio', wavpath+'.wav')
+        basename, _, _ = self.meta[idx]
+        wavpath = os.path.join(self.data_dir, 'audio', basename+'.wav')
         sr, audio = read_wav_np(wavpath)
 
         if len(audio) < self.hp.audio.segment_length + self.hp.audio.pad_short:
@@ -75,19 +75,30 @@ class MelFromDisk(Dataset):
                     mode='constant', constant_values=0.0)
 
         audio = torch.from_numpy(audio).unsqueeze(0)
-        mel = self.get_mel(wavpath)
+        codepath = os.path.join(self.data_dir, 'codes', basename+'.pth')
+        code = torch.load(codepath, map_location='cpu')
 
+        nframes_codes = code.size(1)
+        nframes_audio = audio.size(1) // self.hp.audio.latents_hop_length
+        if nframes_codes > nframes_audio:
+            code = code[:, :nframes_audio]
+        else:
+            code = torch.nn.functional.pad(code,
+                                    (0, nframes_audio - code.size(1)),
+                                    mode='constant',
+                                    value=8193)
         if self.train:
-            max_mel_start = mel.size(1) - self.mel_segment_length -1
+            max_mel_start = code.size(1) - self.mel_segment_length -1
             mel_start = random.randint(0, max_mel_start)
             mel_end = mel_start + self.mel_segment_length
-            mel = mel[:, mel_start:mel_end]
+            code = code[:, mel_start:mel_end]
 
-            audio_start = mel_start * self.hp.audio.hop_length
+            audio_start = mel_start * self.hp.audio.latents_hop_length
             audio_len = self.hp.audio.segment_length
             audio = audio[:, audio_start:audio_start + audio_len]
 
-        return mel, audio
+        return code, audio
+
 
     def get_mel(self, wavpath):
         melpath = wavpath.replace('.wav', '.mel')

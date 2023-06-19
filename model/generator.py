@@ -6,6 +6,17 @@ from .lvcnet import LVCBlock
 
 MAX_WAV_VALUE = 32768.0
 
+
+class Upsampler(nn.Module):
+    def __init__(self, hp):
+        super(Upsampler, self).__init__()
+
+
+    def forward(self, x):
+
+        return x
+
+
 class Generator(nn.Module):
     """UnivNet Generator"""
     def __init__(self, hp):
@@ -15,6 +26,10 @@ class Generator(nn.Module):
         self.hop_length = hp.audio.hop_length
         channel_size = hp.gen.channel_size
         kpnet_conv_size = hp.gen.kpnet_conv_size
+        self.latents_dim = hp.audio.latents_dim
+
+        # hop length between mel spectrograms and audio
+        self.mel_ar_token_ratio = hp.audio.latents_hop_length // hp.audio.hop_length
 
         self.res_stack = nn.ModuleList()
         hop_length = 1
@@ -31,7 +46,7 @@ class Generator(nn.Module):
                     kpnet_conv_size=kpnet_conv_size
                 )
             )
-        
+
         self.conv_pre = \
             nn.utils.weight_norm(nn.Conv1d(hp.gen.noise_dim, channel_size, 7, padding=3, padding_mode='reflect'))
 
@@ -41,18 +56,21 @@ class Generator(nn.Module):
             nn.Tanh(),
         )
 
+        self.upsampler = Upsampler(hp)
+
     def forward(self, c, z):
         '''
-        Args: 
+        Args:
             c (Tensor): the conditioning sequence of mel-spectrogram (batch, mel_channels, in_length) 
             z (Tensor): the noise sequence (batch, noise_dim, in_length)
-        
         '''
+        c_emb = self.upsampler(c)
+
         z = self.conv_pre(z)                # (B, c_g, L)
 
         for res_block in self.res_stack:
             res_block.to(z.device)
-            z = res_block(z, c)             # (B, c_g, L * s_0 * ... * s_i)
+            z = res_block(z, c_emb)             # (B, c_g, L * s_0 * ... * s_i)
 
         z = self.conv_post(z)               # (B, 1, L * 256)
 
@@ -79,11 +97,14 @@ class Generator(nn.Module):
     def inference(self, c, z=None):
         # pad input mel with zeros to cut artifact
         # see https://github.com/seungwonpark/melgan/issues/8
-        zero = torch.full((1, self.mel_channel, 10), -11.5129).to(c.device)
-        mel = torch.cat((c, zero), dim=2)
-        
+
+        #zero = torch.full((1, self.mel_channel, 10), -11.5129).to(c.device)
+        zero = torch.full((1, 10), 8193).to(c.device)
+        mel = torch.cat((c, zero), dim=-1).unsqueeze(0)
+        print(mel.shape)
         if z is None:
-            z = torch.randn(1, self.noise_dim, mel.size(2)).to(mel.device)
+#            z = torch.randn(1, self.noise_dim, mel.size(2)).to(mel.device)
+            z = torch.randn(1, self.noise_dim, mel.size(2)*self.mel_ar_token_ratio).to(mel.device)
 
         audio = self.forward(mel, z)
         audio = audio.squeeze() # collapse all dimension except time axis
