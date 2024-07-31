@@ -10,11 +10,47 @@ MAX_WAV_VALUE = 32768.0
 class Upsampler(nn.Module):
     def __init__(self, hp):
         super(Upsampler, self).__init__()
+        self.in_channels = hp.audio.latents_dim
+        self.mel_channel = hp.audio.n_mel_channels
+        self.num_upsamples = 2
 
+        stride = 2
+        in_channels = self.in_channels
+        self.ups = nn.ModuleList()
+        for i in range(self.num_upsamples):
+            self.ups.append(
+                nn.utils.weight_norm(nn.ConvTranspose1d(
+                in_channels//(2**i),
+                in_channels//(2**(i+1)),
+                2*stride,
+                stride=stride,
+                padding=stride // 2 + stride % 2,
+                output_padding=stride % 2)))
+            self.ups.append(nn.LeakyReLU(hp.gen.lReLU_slope))
+            self.ups.append(nn.BatchNorm1d(in_channels//(2**(i+1))))
+        self.post = nn.Sequential(
+            nn.utils.weight_norm(nn.Conv1d(in_channels//(2**(i+1)), 128, 7, 1, padding=3)),
+            nn.LeakyReLU(hp.gen.lReLU_slope),
+            nn.BatchNorm1d(128),
+            nn.utils.weight_norm(nn.Conv1d(128, self.mel_channel, 7, 1, padding=3)),
+            nn.LeakyReLU(hp.gen.lReLU_slope),
+            nn.BatchNorm1d(self.mel_channel))
 
     def forward(self, x):
+        for up_step in self.ups:
+            x = up_step(x)
+        x = self.post(x)
 
         return x
+
+    def remove_weight_norm(self):
+        print('Removing weight norm...')
+        for i, l in enumerate(self.ups):
+             if i % 3 == 0:
+                nn.utils.remove_weight_norm(l)
+        for i, l in enumerate(self.post):
+            if i % 3 == 0:
+                nn.utils.remove_weight_norm(l)
 
 
 class Generator(nn.Module):
@@ -56,6 +92,7 @@ class Generator(nn.Module):
             nn.Tanh(),
         )
 
+        self.embedding = nn.Embedding(8194, hp.audio.latents_dim)
         self.upsampler = Upsampler(hp)
 
     def forward(self, c, z):
@@ -64,7 +101,8 @@ class Generator(nn.Module):
             c (Tensor): the conditioning sequence of mel-spectrogram (batch, mel_channels, in_length) 
             z (Tensor): the noise sequence (batch, noise_dim, in_length)
         '''
-        c_emb = self.upsampler(c)
+        c_emb = self.embedding(c.squeeze(1).int()).transpose(2,1)
+        c_emb = self.upsampler(c_emb)
 
         z = self.conv_pre(z)                # (B, c_g, L)
 
@@ -101,7 +139,6 @@ class Generator(nn.Module):
         #zero = torch.full((1, self.mel_channel, 10), -11.5129).to(c.device)
         zero = torch.full((1, 10), 8193).to(c.device)
         mel = torch.cat((c, zero), dim=-1).unsqueeze(0)
-        print(mel.shape)
         if z is None:
 #            z = torch.randn(1, self.noise_dim, mel.size(2)).to(mel.device)
             z = torch.randn(1, self.noise_dim, mel.size(2)*self.mel_ar_token_ratio).to(mel.device)
