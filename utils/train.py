@@ -129,15 +129,25 @@ def train(rank, args, chkpt_path, hp, hp_str):
 
             mel = mel.to(device)
             audio = audio.to(device)
-            noise = torch.randn(hp.train.batch_size,
-                                hp.gen.noise_dim,
-                                mel.size(2)*ar_tokens_to_mel_spec_ratio).to(device)
+#            noise = torch.randn(hp.train.batch_size,
+#                                hp.gen.noise_dim,
+#                                mel.size(1)*ar_tokens_to_mel_spec_ratio).to(device)
 
             # generator
             optim_g.zero_grad()
-            fake_audio = model_g(mel, noise)
+#            fake_audio = model_g(mel, noise)
+            fake_audio = model_g(mel)
+
+#            print(mel.shape)
+#            print(audio.shape)
+#            print(fake_audio.shape)
 
             # Multi-Resolution STFT Loss
+            assert abs(fake_audio.shape[2]-audio.shape[2]) <= hp.audio.latents_hop_length, f'{audio.shape}, {fake_audio.shape}'
+            if fake_audio.shape[2] < audio.shape[2]:
+                audio = audio[:,:,:fake_audio.shape[2]]
+            elif fake_audio.shape[2] > audio.shape[2]:
+                fake_audio = fake_audio[:,:,:audio.shape[2]]
             sc_loss, mag_loss = stft_criterion(fake_audio.squeeze(1), audio.squeeze(1))
             stft_loss = (sc_loss + mag_loss) * hp.train.stft_lamb
 

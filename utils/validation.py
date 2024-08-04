@@ -16,9 +16,10 @@ def validate(hp, args, generator, discriminator, valloader, stft, writer, step, 
     for idx, (mel, audio) in enumerate(loader):
         mel = mel.to(device)
         audio = audio.to(device)
-        noise = torch.randn(1, hp.gen.noise_dim, mel.size(2)*mel_ar_token_ratio).to(device)
+#        noise = torch.randn(1, hp.gen.noise_dim, mel.size(2)*mel_ar_token_ratio).to(device)
 
-        fake_audio = generator(mel, noise)[:,:,:audio.size(2)]
+#        fake_audio = generator(mel, noise)[:,:,:audio.size(2)]
+        fake_audio = generator(mel)
 
         if audio.size(2) > fake_audio.size(2):
             audio = audio[:,:,:fake_audio.size(2)]

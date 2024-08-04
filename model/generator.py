@@ -12,7 +12,7 @@ class Upsampler(nn.Module):
         super(Upsampler, self).__init__()
         self.in_channels = hp.audio.latents_dim
         self.mel_channel = hp.audio.n_mel_channels
-        self.num_upsamples = 2
+        self.num_upsamples = 1
 
         stride = 2
         in_channels = self.in_channels
@@ -51,6 +51,22 @@ class Upsampler(nn.Module):
         for i, l in enumerate(self.post):
             if i % 3 == 0:
                 nn.utils.remove_weight_norm(l)
+
+
+class EmbeddingLayer(nn.Module):
+    def __init__(self, hp):
+        super(EmbeddingLayer, self).__init__()
+        self.embedding = nn.Embedding(hp.audio.codes_vocab_size, hp.audio.latents_dim)
+        if hp.audio.codes_hop_length != hp.audio.latents_hop_length:
+           self.scale_factor = hp.audio.codes_hop_length / hp.audio.latents_hop_length
+        else:
+           self.scale_factor = None
+
+    def forward(self, c):
+        x = self.embedding(c).permute(0,2,1)
+        if self.scale_factor is not None:
+            return torch.nn.functional.interpolate(x, scale_factor=self.scale_factor, mode='nearest')
+        return x
 
 
 class Generator(nn.Module):
@@ -92,17 +108,26 @@ class Generator(nn.Module):
             nn.Tanh(),
         )
 
-        self.embedding = nn.Embedding(8194, hp.audio.latents_dim)
+        self.embedding_layer = EmbeddingLayer(hp)
         self.upsampler = Upsampler(hp)
+        self.ar_tokens_to_mel_spec_ratio = hp.audio.latents_hop_length // hp.audio.hop_length - 1
+        self.noise_dim = hp.gen.noise_dim
 
-    def forward(self, c, z):
+#    def forward(self, c, z):
+    def forward(self, c):
         '''
         Args:
             c (Tensor): the conditioning sequence of mel-spectrogram (batch, mel_channels, in_length) 
             z (Tensor): the noise sequence (batch, noise_dim, in_length)
         '''
-        c_emb = self.embedding(c.squeeze(1).int()).transpose(2,1)
+
+        c_emb = self.embedding_layer(c)
+
         c_emb = self.upsampler(c_emb)
+
+        z = torch.randn(c.shape[0],
+                        self.noise_dim,
+                        c_emb.shape[2] * self.ar_tokens_to_mel_spec_ratio).to(c_emb.device)
 
         z = self.conv_pre(z)                # (B, c_g, L)
 

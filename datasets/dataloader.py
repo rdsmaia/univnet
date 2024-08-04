@@ -2,6 +2,7 @@ import os
 import glob
 import torch
 import random
+import math
 import numpy as np
 from torch.utils.data import DistributedSampler, DataLoader, Dataset
 from collections import Counter
@@ -35,7 +36,7 @@ class MelFromDisk(Dataset):
                                  hp.audio.n_mel_channels, hp.audio.sampling_rate,
                                  hp.audio.mel_fmin, hp.audio.mel_fmax, center=False, device=device)
 
-        self.mel_segment_length = hp.audio.segment_length // hp.audio.latents_hop_length
+        self.mel_segment_length = math.ceil(hp.audio.segment_length / hp.audio.codes_hop_length)
         self.shuffle = hp.train.spk_balanced
 
         if train and hp.train.spk_balanced:
@@ -67,37 +68,37 @@ class MelFromDisk(Dataset):
 
     def my_getitem(self, idx):
         basename, _, _ = self.meta[idx]
-        wavpath = os.path.join(self.data_dir, 'audio', basename+'.wav')
+        wavpath = os.path.join(self.data_dir, 'wavs24kHz', basename+'.wav')
         sr, audio = read_wav_np(wavpath)
 
-        if len(audio) < self.hp.audio.segment_length + self.hp.audio.pad_short:
-            audio = np.pad(audio, (0, self.hp.audio.segment_length + self.hp.audio.pad_short - len(audio)), \
-                    mode='constant', constant_values=0.0)
-
         audio = torch.from_numpy(audio).unsqueeze(0)
-        codepath = os.path.join(self.data_dir, 'codes', basename+'.pth')
-        code = torch.load(codepath, map_location='cpu')
+        codepath = os.path.join(self.data_dir, 'xlsr', basename+'.pth')
+        code = torch.load(codepath, map_location='cpu').unsqueeze(0)
 
-        nframes_codes = code.size(1)
-        nframes_audio = audio.size(1) // self.hp.audio.latents_hop_length
-        if nframes_codes > nframes_audio:
+        nframes_audio = audio.size(1) // self.hp.audio.codes_hop_length
+
+        # this should not be very different
+        assert abs(code.size(1) - nframes_audio) <= 1, f'codes shape={code.shape}, audio shape={audio.shape}\n'
+
+        if nframes_audio > code.size(1):
+            audio = audio[:, :(self.hp.audio.codes_hop_length * code.size(1))]
+        elif nframes_audio < code.size(1):
             code = code[:, :nframes_audio]
-        else:
-            code = torch.nn.functional.pad(code,
-                                    (0, nframes_audio - code.size(1)),
-                                    mode='constant',
-                                    value=8193)
+
         if self.train:
-            max_mel_start = code.size(1) - self.mel_segment_length -1
-            mel_start = random.randint(0, max_mel_start)
-            mel_end = mel_start + self.mel_segment_length
-            code = code[:, mel_start:mel_end]
+            if audio.size(1) >= self.hp.audio.segment_length:
+                code_start = random.randint(0, code.size(1) - self.mel_segment_length)
+                code = code[:, code_start : code_start + self.mel_segment_length]
+                audio = audio[:, code_start * self.hp.audio.codes_hop_length : (code_start + self.mel_segment_length) * self.hp.audio.codes_hop_length]
+            else:
+                code = torch.nn.functional.pad(code,
+                                               (0, self.mel_segment_length - code.size(1)),
+                                               'replicate')
+                audio = torch.nn.functional.pad(audio,
+                                                (0, self.hp.audio.segment_length - audio.size(1)),
+                                                'constant')
 
-            audio_start = mel_start * self.hp.audio.latents_hop_length
-            audio_len = self.hp.audio.segment_length
-            audio = audio[:, audio_start:audio_start + audio_len]
-
-        return code, audio
+        return code.squeeze(), audio
 
 
     def get_mel(self, wavpath):
@@ -113,9 +114,14 @@ class MelFromDisk(Dataset):
             assert sr == self.hp.audio.sampling_rate, \
                 'sample mismatch: expected %d, got %d at %s' % (self.hp.audio.sampling_rate, sr, wavpath)
 
-            if len(wav) < self.hp.audio.segment_length + self.hp.audio.pad_short:
-                wav = np.pad(wav, (0, self.hp.audio.segment_length + self.hp.audio.pad_short - len(wav)), \
-                             mode='constant', constant_values=0.0)
+#            if len(wav) < self.hp.audio.segment_length + self.hp.audio.pad_short:
+#                wav = np.pad(wav, (0, self.hp.audio.segment_length + self.hp.audio.pad_short - len(wav)), \
+#                             mode='constant', constant_values=0.0)
+            if len(wav) < self.hp.audio.segment_length:
+                wav = np.pad(wav,
+                             (0, self.hp.audio.segment_length - len(wav)),
+                             mode='constant',
+                             constant_values=0.0)
 
             wav = torch.from_numpy(wav).unsqueeze(0)
             mel = self.stft.mel_spectrogram(wav)
