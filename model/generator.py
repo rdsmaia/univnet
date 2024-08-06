@@ -113,7 +113,6 @@ class Generator(nn.Module):
         self.ar_tokens_to_mel_spec_ratio = hp.audio.latents_hop_length // hp.audio.hop_length - 1
         self.noise_dim = hp.gen.noise_dim
 
-#    def forward(self, c, z):
     def forward(self, c):
         '''
         Args:
@@ -158,19 +157,8 @@ class Generator(nn.Module):
             res_block.remove_weight_norm()
 
     def inference(self, c, z=None):
-        # pad input mel with zeros to cut artifact
-        # see https://github.com/seungwonpark/melgan/issues/8
-
-        #zero = torch.full((1, self.mel_channel, 10), -11.5129).to(c.device)
-        zero = torch.full((1, 10), 8193).to(c.device)
-        mel = torch.cat((c, zero), dim=-1).unsqueeze(0)
-        if z is None:
-#            z = torch.randn(1, self.noise_dim, mel.size(2)).to(mel.device)
-            z = torch.randn(1, self.noise_dim, mel.size(2)*self.mel_ar_token_ratio).to(mel.device)
-
-        audio = self.forward(mel, z)
+        audio = self.forward(c)
         audio = audio.squeeze() # collapse all dimension except time axis
-        audio = audio[:-(self.hop_length*10)]
         audio = MAX_WAV_VALUE * audio
         audio = audio.clamp(min=-MAX_WAV_VALUE, max=MAX_WAV_VALUE-1)
         audio = audio.short()
