@@ -162,15 +162,16 @@ class Generator(nn.Module):
         # see https://github.com/seungwonpark/melgan/issues/8
 
         #zero = torch.full((1, self.mel_channel, 10), -11.5129).to(c.device)
-        zero = torch.full((1, 10), 8193).to(c.device)
-        mel = torch.cat((c, zero), dim=-1).unsqueeze(0)
-        if z is None:
+#        zero = torch.full((1, 10), 8193).to(c.device)
+#        mel = torch.cat((c, zero), dim=-1).unsqueeze(0)
+#        mel = c.unsqueeze(0)
+#        if z is None:
 #            z = torch.randn(1, self.noise_dim, mel.size(2)).to(mel.device)
-            z = torch.randn(1, self.noise_dim, mel.size(2)*self.mel_ar_token_ratio).to(mel.device)
+#            z = torch.randn(1, self.noise_dim, mel.size(2)*self.mel_ar_token_ratio).to(mel.device)
 
-        audio = self.forward(mel, z)
+        audio = self.forward(c)
         audio = audio.squeeze() # collapse all dimension except time axis
-        audio = audio[:-(self.hop_length*10)]
+#        audio = audio[:-(self.hop_length*10)]
         audio = MAX_WAV_VALUE * audio
         audio = audio.clamp(min=-MAX_WAV_VALUE, max=MAX_WAV_VALUE-1)
         audio = audio.short()

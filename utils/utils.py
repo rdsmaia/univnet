@@ -4,9 +4,9 @@ import numpy as np
 from scipy.io.wavfile import read
 
 
-def get_commit_hash():
-    message = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
-    return message.strip().decode('utf-8')
+#def get_commit_hash():
+#    message = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"])
+#    return message.strip().decode('utf-8')
 
 def read_wav_np(path):
     sr, wav = read(path)

@@ -17,7 +17,7 @@ from utils.stft import TacotronSTFT
 from utils.stft_loss import MultiResolutionSTFTLoss
 from model.generator import Generator
 from model.discriminator import Discriminator
-from .utils import get_commit_hash
+#from .utils import get_commit_hash
 from .validation import validate
 
 
@@ -41,7 +41,7 @@ def train(rank, args, chkpt_path, hp, hp_str):
     # important: ratio between AR tokens and mel spectrograms
     ar_tokens_to_mel_spec_ratio = hp.audio.latents_hop_length // hp.audio.hop_length
 
-    githash = get_commit_hash()
+#    githash = get_commit_hash()
 
     init_epoch = -1
     step = 0
@@ -89,9 +89,9 @@ def train(rank, args, chkpt_path, hp, hp_str):
             if hp_str != checkpoint['hp_str']:
                 logger.warning("New hparams is different from checkpoint. Will use new.")
 
-            if githash != checkpoint['githash']:
-                logger.warning("Code might be different: git hash is different.")
-                logger.warning("%s -> %s" % (checkpoint['githash'], githash))
+#            if githash != checkpoint['githash']:
+#                logger.warning("Code might be different: git hash is different.")
+#                logger.warning("%s -> %s" % (checkpoint['githash'], githash))
 
     else:
         if rank == 0:
@@ -201,6 +201,6 @@ def train(rank, args, chkpt_path, hp, hp_str):
                 'step': step,
                 'epoch': epoch,
                 'hp_str': hp_str,
-                'githash': githash,
+#                'githash': githash,
             }, save_path)
             logger.info("Saved checkpoint to: %s" % save_path)
