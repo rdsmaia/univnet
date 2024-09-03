@@ -113,7 +113,6 @@ class Generator(nn.Module):
         self.ar_tokens_to_mel_spec_ratio = hp.audio.latents_hop_length // hp.audio.hop_length - 1
         self.noise_dim = hp.gen.noise_dim
 
-#    def forward(self, c, z):
     def forward(self, c):
         '''
         Args:
@@ -158,6 +157,7 @@ class Generator(nn.Module):
             res_block.remove_weight_norm()
 
     def inference(self, c, z=None):
+<<<<<<< HEAD
         # pad input mel with zeros to cut artifact
         # see https://github.com/seungwonpark/melgan/issues/8
 
@@ -172,6 +172,10 @@ class Generator(nn.Module):
         audio = self.forward(c)
         audio = audio.squeeze() # collapse all dimension except time axis
 #        audio = audio[:-(self.hop_length*10)]
+=======
+        audio = self.forward(c)
+        audio = audio.squeeze() # collapse all dimension except time axis
+>>>>>>> 8d2ee8e32e6fbf6a618fd7fab1f9d38331e78193
         audio = MAX_WAV_VALUE * audio
         audio = audio.clamp(min=-MAX_WAV_VALUE, max=MAX_WAV_VALUE-1)
         audio = audio.short()
