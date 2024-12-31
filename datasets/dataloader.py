@@ -30,14 +30,15 @@ class MelFromDisk(Dataset):
         self.args = args
         self.train = train
         self.data_dir = data_dir
-        metadata_path = os.path.join(data_dir, metadata_path)
-        self.meta = self.load_metadata(metadata_path)
+        self.metadata_path = os.path.join(data_dir, metadata_path)
+        self.meta = self.load_metadata(self.metadata_path)
         self.stft = TacotronSTFT(hp.audio.filter_length, hp.audio.hop_length, hp.audio.win_length,
                                  hp.audio.n_mel_channels, hp.audio.sampling_rate,
                                  hp.audio.mel_fmin, hp.audio.mel_fmax, center=False, device=device)
 
         self.mel_segment_length = math.ceil(hp.audio.segment_length / hp.audio.codes_hop_length)
         self.shuffle = hp.train.spk_balanced
+        self.feature_path = hp.data.feature_path
 
         if train and hp.train.spk_balanced:
             # balanced sampling for each speaker
@@ -67,12 +68,17 @@ class MelFromDisk(Dataset):
         random.shuffle(self.mapping_weights)
 
     def my_getitem(self, idx):
-        basename, _, _ = self.meta[idx]
-        wavpath = os.path.join(self.data_dir, 'wavs24kHz', basename+'.wav')
+        if 'ljspeech' in self.metadata_path:
+            basename, _, _ = self.meta[idx]
+            wavpath = os.path.join(self.data_dir, 'wavs24kHz', basename+'.wav')
+        else:
+            wavpath, _, _ = self.meta[idx]
+            ext = wavpath.split('.')[-1]
+            basename = os.path.basename(wavpath).replace('.'+ext, '')
         sr, audio = read_wav_np(wavpath)
 
         audio = torch.from_numpy(audio).unsqueeze(0)
-        codepath = os.path.join(self.data_dir, 'xlsr', basename+'.pth')
+        codepath = os.path.join(self.data_dir, self.feature_path, basename+'.pth')
         code = torch.load(codepath, map_location='cpu').unsqueeze(0)
 
         nframes_audio = audio.size(1) // self.hp.audio.codes_hop_length
