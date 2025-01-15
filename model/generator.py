@@ -7,6 +7,29 @@ from .lvcnet import LVCBlock
 MAX_WAV_VALUE = 32768.0
 
 
+class FiLM(nn.Module):
+    def __init__(self, hp):
+        super(FiLM, self).__init__()
+        self.gamma_nn = nn.Sequential(
+            nn.Linear(
+               in_features=hp.audio.speaker_cond_dim,
+               out_features=hp.audio.latents_dim//2
+               ),
+        )
+        self.beta_nn = nn.Sequential(
+            nn.Linear(
+               in_features=h.audio.speaker_cond_dim,
+               out_features=h.audio.latents_dim//2
+               ),
+        )
+
+    def forward(self, s):
+        gamma = self.gamma_nn(s)
+        beta = self.beta_nn(s)
+
+        return gamma, beta
+
+
 class Upsampler(nn.Module):
     def __init__(self, hp):
         super(Upsampler, self).__init__()
@@ -113,27 +136,41 @@ class Generator(nn.Module):
         self.ar_tokens_to_mel_spec_ratio = hp.audio.latents_hop_length // hp.audio.hop_length - 1
         self.noise_dim = hp.gen.noise_dim
 
-    def forward(self, c):
+        # conditioning layer
+        self.cond_layer = FiLML(hp) if hp.audio.use_speaker_cond else None
+
+    def forward(self, c, s=None):
         '''
         Args:
             c (Tensor): the conditioning sequence of mel-spectrogram (batch, mel_channels, in_length) 
             z (Tensor): the noise sequence (batch, noise_dim, in_length)
         '''
 
+        # embedding layer
         c_emb = self.embedding_layer(c)
 
+        # upsampler
         c_emb = self.upsampler(c_emb)
 
+        # conditioning layer
+        if self.cond_layer:
+            gamma, beta = self.cond_layer(s)
+            c_emb = c_emb * gamma.unsqueeze(2) + beta.unsqueeze(2)
+
+        # noise
         z = torch.randn(c.shape[0],
                         self.noise_dim,
                         c_emb.shape[2] * self.ar_tokens_to_mel_spec_ratio).to(c_emb.device)
 
+        # pre-processing
         z = self.conv_pre(z)                # (B, c_g, L)
 
+        # noise processing with conditioning
         for res_block in self.res_stack:
             res_block.to(z.device)
             z = res_block(z, c_emb)             # (B, c_g, L * s_0 * ... * s_i)
 
+        # post-processing
         z = self.conv_post(z)               # (B, 1, L * 256)
 
         return z

@@ -132,7 +132,7 @@ def train(rank, args, chkpt_path, hp, hp_str):
         else:
             loader = trainloader
 
-        for mel, audio in loader:
+        for mel, audio, cond in loader:
 
             mel = mel.to(device)
             audio = audio.to(device)
@@ -143,7 +143,7 @@ def train(rank, args, chkpt_path, hp, hp_str):
             # generator
             optim_g.zero_grad()
 #            fake_audio = model_g(mel, noise)
-            fake_audio = model_g(mel)
+            fake_audio = model_g(mel, cond)
 
 #            print(mel.shape)
 #            print(audio.shape)
