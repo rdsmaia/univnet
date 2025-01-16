@@ -13,13 +13,13 @@ class FiLM(nn.Module):
         self.gamma_nn = nn.Sequential(
             nn.Linear(
                in_features=hp.audio.speaker_cond_dim,
-               out_features=hp.audio.latents_dim//2
+               out_features=hp.audio.n_mel_channels
                ),
         )
         self.beta_nn = nn.Sequential(
             nn.Linear(
-               in_features=h.audio.speaker_cond_dim,
-               out_features=h.audio.latents_dim//2
+               in_features=hp.audio.speaker_cond_dim,
+               out_features=hp.audio.n_mel_channels
                ),
         )
 
@@ -137,7 +137,7 @@ class Generator(nn.Module):
         self.noise_dim = hp.gen.noise_dim
 
         # conditioning layer
-        self.cond_layer = FiLML(hp) if hp.audio.use_speaker_cond else None
+        self.cond_layer = FiLM(hp) if hp.audio.use_speaker_cond else None
 
     def forward(self, c, s=None):
         '''
@@ -156,6 +156,7 @@ class Generator(nn.Module):
         if self.cond_layer:
             gamma, beta = self.cond_layer(s)
             c_emb = c_emb * gamma.unsqueeze(2) + beta.unsqueeze(2)
+            c_emb = c_emb
 
         # noise
         z = torch.randn(c.shape[0],

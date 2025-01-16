@@ -14,13 +14,15 @@ def validate(hp, args, generator, discriminator, valloader, stft, writer, step, 
 
     loader = tqdm.tqdm(valloader, desc='Validation loop')
     mel_loss = 0.0
-    for idx, (mel, audio) in enumerate(loader):
+    for idx, (mel, audio, cond) in enumerate(loader):
         mel = mel.to(device)
         audio = audio.to(device)
+        if hp.audio.use_speaker_cond:
+            cond = cond.to(device)
 #        noise = torch.randn(1, hp.gen.noise_dim, mel.size(2)*mel_ar_token_ratio).to(device)
 
 #        fake_audio = generator(mel, noise)[:,:,:audio.size(2)]
-        fake_audio = generator(mel)
+        fake_audio = generator(mel, cond)
 
         if audio.size(2) > fake_audio.size(2):
             audio = audio[:,:,:fake_audio.size(2)]

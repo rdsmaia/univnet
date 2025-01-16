@@ -136,6 +136,8 @@ def train(rank, args, chkpt_path, hp, hp_str):
 
             mel = mel.to(device)
             audio = audio.to(device)
+            if hp.audio.use_speaker_cond:
+                cond = cond.to(device)
 #            noise = torch.randn(hp.train.batch_size,
 #                                hp.gen.noise_dim,
 #                                mel.size(1)*ar_tokens_to_mel_spec_ratio).to(device)

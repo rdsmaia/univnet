@@ -38,7 +38,8 @@ class MelFromDisk(Dataset):
 
         self.mel_segment_length = math.ceil(hp.audio.segment_length / hp.audio.codes_hop_length)
         self.shuffle = hp.train.spk_balanced
-        self.feature_path = hp.data.feature_path
+        self.code_path = hp.data.code_path
+        self.use_speaker_cond = hp.audio.use_speaker_cond
 
         if train and hp.train.spk_balanced:
             # balanced sampling for each speaker
@@ -78,7 +79,7 @@ class MelFromDisk(Dataset):
         sr, audio = read_wav_np(wavpath)
 
         audio = torch.from_numpy(audio).unsqueeze(0)
-        codepath = os.path.join(self.data_dir, self.feature_path, basename+'.pth')
+        codepath = os.path.join(self.data_dir, self.code_path, basename+'.pth')
         code = torch.load(codepath, map_location='cpu').unsqueeze(0)
 
         nframes_audio = audio.size(1) // self.hp.audio.codes_hop_length
@@ -104,7 +105,13 @@ class MelFromDisk(Dataset):
                                                 (0, self.hp.audio.segment_length - audio.size(1)),
                                                 'constant')
 
-        return code.squeeze(), audio
+        if self.use_speaker_cond:
+            speaker_cond_path = os.path.join(self.data_dir, self.hp.data.speaker_cond_path, basename+'_speaker_cond.pth')
+            speaker_cond = torch.load(speaker_cond_path, map_location='cpu').float()
+        else:
+            speaker_cond = None
+
+        return code.squeeze(), audio, speaker_cond.squeeze()
 
 
     def get_mel(self, wavpath):
