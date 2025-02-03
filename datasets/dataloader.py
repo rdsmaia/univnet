@@ -79,8 +79,12 @@ class MelFromDisk(Dataset):
         sr, audio = read_wav_np(wavpath)
 
         audio = torch.from_numpy(audio).unsqueeze(0)
-        codepath = os.path.join(self.data_dir, self.code_path, basename+'.pth')
-        code = torch.load(codepath, map_location='cpu').unsqueeze(0)
+        codepath = os.path.join(self.data_dir, self.code_path, basename+'_xlsr.pth')
+        code = torch.load(codepath, map_location='cpu')
+        if len(code.shape) == 3:
+            code = code.squeeze(1)
+        elif len(code.shape) == 1:
+            code = code.unsqueeze(0)
 
         nframes_audio = audio.size(1) // self.hp.audio.codes_hop_length
 
