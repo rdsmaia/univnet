@@ -32,11 +32,11 @@ def main(args):
     model.eval(inference=True)
 
     if args.cond_file:
-        speaker_cond = torch.load(args.cond_file, map_location='cpu')
+        speaker_cond = torch.load(args.cond_file, map_location='cpu').float().cuda()
         
     os.makedirs(args.output_folder, exist_ok=True)
     with torch.no_grad():
-        for codepath in tqdm.tqdm(glob.glob(os.path.join(args.input_folder, '*.pth'))):
+        for codepath in tqdm.tqdm(glob.glob(os.path.join(args.input_folder, '*_codes.pth'))):
 
             code = torch.load(codepath, map_location='cpu')
 
@@ -45,15 +45,16 @@ def main(args):
             code = code.cuda()
 
             if not args.cond_file:
-                speaker_cond_path = os.path.join(args.cond_folder, os.path.basename(codepath).replace('.pth', '_speaker_cond.pth'))
-                speaker_cond = torch.load(speaker_cond_path, map_location='cpu').float()
-                speaker_cond = speaker_cond.cuda()
+                speaker_cond_path = codepath.replace('_codes.pth', '_speaker_cond.pth')
+                speaker_cond = torch.load(speaker_cond_path, map_location='cpu').float().cuda()
+                if len(speaker_cond.shape) == 3:
+                    speaker_cond = speaker_cond.squeeze(1)
 
             audio = model.inference(code, speaker_cond)
             audio = audio.cpu().detach().numpy()
 
             basename = os.path.basename(codepath)
-            out_path = os.path.join(args.output_folder, basename.replace('.pth','.wav'))
+            out_path = os.path.join(args.output_folder, basename.replace('_codes.pth','.wav'))
             write(out_path, hp.audio.sampling_rate, audio)
 
 
@@ -69,8 +70,8 @@ if __name__ == '__main__':
                         help="directory which generated raw audio is saved.")
     parser.add_argument('-s', '--cond_file', default=None,
                         help='conditioning file to be used.')
-    parser.add_argument('-f', '--cond_folder', default=None,
-                        help='folder containing conditioning files to be used.')
+#    parser.add_argument('-f', '--cond_folder', default=None,
+#                        help='folder containing conditioning files to be used.')
     args = parser.parse_args()
 #    assert args.cond_file is not None and args.cond_folder is not None, 'You must provide either conditioning file or folder.'
 
