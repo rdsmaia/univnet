@@ -102,11 +102,12 @@ def train(rank, args, chkpt_path, hp, hp_str):
         model_g = DistributedDataParallel(model_g, device_ids=[rank]).to(device)
         model_d = DistributedDataParallel(model_d, device_ids=[rank]).to(device)
 
-    wandb.init(
-        project='vocodec_univnet',
-        name=args.name,
-        resume='allow',
-        dir=os.path.join(hp.log.log_dir, 'wandb'))
+    if hp.log.use_wandb:
+        wandb.init(
+            project='vocodec_univnet',
+            name=args.name,
+            resume='allow',
+            dir=os.path.join(hp.log.log_dir, 'wandb'))
 
     # this accelerates training when the size of minibatch is always consistent.
     # if not consistent, it'll horribly slow down.
@@ -198,13 +199,14 @@ def train(rank, args, chkpt_path, hp, hp_str):
             if rank == 0 and step % hp.log.summary_interval == 0:
                 writer.log_training(loss_g, loss_d, stft_loss.item(), score_loss.item(), step)
                 loader.set_description("g %.04f d %.04f | step %d" % (loss_g, loss_d, step))
-                wandb.log({
-                    "g loss": loss_g,
-                    "d loss": loss_d,
-                    "stft loss": stft_loss.item(),
-                    "score loss": score_loss.item(),
-                    "step": step
-                })
+                if hp.log.use_wandb:
+                    wandb.log({
+                        "g loss": loss_g,
+                        "d loss": loss_d,
+                        "stft loss": stft_loss.item(),
+                        "score loss": score_loss.item(),
+                        "step": step
+                    })
 
         if rank == 0 and epoch % hp.log.save_interval == 0:
             save_path = os.path.join(pt_dir, '%s_%04d.pt'

@@ -88,8 +88,27 @@ class EmbeddingLayer(nn.Module):
     def forward(self, c):
         x = self.embedding(c).permute(0,2,1)
         if self.scale_factor is not None:
-            return torch.nn.functional.interpolate(x, scale_factor=self.scale_factor, mode='nearest')
+            x = nn.functional.interpolate(x, scale_factor=self.scale_factor, mode='nearest')
         return x
+
+
+class LookupTable(torch.nn.Module):
+    def __init__(self, hp):
+        super(LookupTable, self).__init__()
+        centroids = torch.from_numpy(np.load(hp.audio.xlsr_centroids))
+        self.register_buffer('centroids', centroids)
+        self.projection = nn.Linear(in_features=self.centroids.size(1), out_features=hp.audio.latents_dim)
+        if hp.audio.codes_hop_length != hp.audio.latents_hop_length:
+           self.scale_factor = hp.audio.codes_hop_length / hp.audio.latents_dim
+        else:
+           self.scale_factor = None
+    
+    def forward(self, c):
+        x = self.centroids[c]
+        x = self.projection(x)
+        if self.scale_factor is not None:
+            x = nn.functional.interpolate(x, scale_factor=self.scale_factor, mode='nearest')
+        return x.permute(0,2,1)
 
 
 class Generator(nn.Module):
@@ -105,6 +124,8 @@ class Generator(nn.Module):
 
         # hop length between mel spectrograms and audio
         self.mel_ar_token_ratio = hp.audio.latents_hop_length // hp.audio.hop_length
+
+        self.use_centroids = hp.audio.use_centroids
 
         self.res_stack = nn.ModuleList()
         hop_length = 1
@@ -131,7 +152,11 @@ class Generator(nn.Module):
             nn.Tanh(),
         )
 
-        self.embedding_layer = EmbeddingLayer(hp)
+        if not self.use_centroids:
+            self.embedding_layer = EmbeddingLayer(hp)
+        else:
+            self.lookup_table = LookupTable(hp)
+
         self.upsampler = Upsampler(hp)
         self.ar_tokens_to_mel_spec_ratio = hp.audio.latents_hop_length // hp.audio.hop_length - 1
         self.noise_dim = hp.gen.noise_dim
@@ -145,9 +170,12 @@ class Generator(nn.Module):
             c (Tensor): the conditioning sequence of mel-spectrogram (batch, mel_channels, in_length) 
             z (Tensor): the noise sequence (batch, noise_dim, in_length)
         '''
-
+        
         # embedding layer
-        c_emb = self.embedding_layer(c)
+        if not self.use_centroids:
+            c_emb = self.embedding_layer(c)
+        else:
+            c_emb = self.lookup_table(c)
 
         # upsampler
         c_emb = self.upsampler(c_emb)

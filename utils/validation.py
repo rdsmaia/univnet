@@ -47,8 +47,9 @@ def validate(hp, args, generator, discriminator, valloader, stft, writer, step, 
     mel_loss = mel_loss / len(valloader.dataset)
 
     writer.log_validation(mel_loss, generator, discriminator, step)
-    wandb.log({
-        "val mel loss": mel_loss
-    })
+    if hp.log.use_wandb:
+        wandb.log({
+            "val mel loss": mel_loss
+        })
 
     torch.backends.cudnn.benchmark = True
