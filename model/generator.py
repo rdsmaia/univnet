@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import numpy as np
 from omegaconf import OmegaConf
 
 from .lvcnet import LVCBlock
@@ -86,10 +87,10 @@ class EmbeddingLayer(nn.Module):
            self.scale_factor = None
 
     def forward(self, c):
-        x = self.embedding(c).permute(0,2,1)
+        x = self.embedding(c).permute(0,2,1)  # (B, D, T)
         if self.scale_factor is not None:
             x = nn.functional.interpolate(x, scale_factor=self.scale_factor, mode='nearest')
-        return x
+        return x  # (B, D, T)
 
 
 class LookupTable(torch.nn.Module):
@@ -99,16 +100,16 @@ class LookupTable(torch.nn.Module):
         self.register_buffer('centroids', centroids)
         self.projection = nn.Linear(in_features=self.centroids.size(1), out_features=hp.audio.latents_dim)
         if hp.audio.codes_hop_length != hp.audio.latents_hop_length:
-           self.scale_factor = hp.audio.codes_hop_length / hp.audio.latents_dim
+           self.scale_factor = hp.audio.codes_hop_length / hp.audio.latents_hop_length
         else:
            self.scale_factor = None
     
     def forward(self, c):
-        x = self.centroids[c]
-        x = self.projection(x)
+        x = self.centroids[c] # (B, T, D1)
+        x = self.projection(x).permute(0, 2, 1) # (B, D, T)
         if self.scale_factor is not None:
             x = nn.functional.interpolate(x, scale_factor=self.scale_factor, mode='nearest')
-        return x.permute(0,2,1)
+        return x  # (B, D, T)
 
 
 class Generator(nn.Module):
@@ -124,8 +125,6 @@ class Generator(nn.Module):
 
         # hop length between mel spectrograms and audio
         self.mel_ar_token_ratio = hp.audio.latents_hop_length // hp.audio.hop_length
-
-        self.use_centroids = hp.audio.use_centroids
 
         self.res_stack = nn.ModuleList()
         hop_length = 1
@@ -151,6 +150,8 @@ class Generator(nn.Module):
             nn.utils.weight_norm(nn.Conv1d(channel_size, 1, 7, padding=3, padding_mode='reflect')),
             nn.Tanh(),
         )
+
+        self.use_centroids = hp.audio.use_code_centroids
 
         if not self.use_centroids:
             self.embedding_layer = EmbeddingLayer(hp)
