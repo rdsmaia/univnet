@@ -22,6 +22,20 @@ from model.discriminator import Discriminator
 from .validation import validate
 
 
+def setup_wandb(hp, args, run_id=None):
+    if run_id:
+        # Resume existing run
+        wandb.init(id=run_id, resume="allow")
+    else:
+        # Start a new run
+        wandb.init(
+            project='vocodec_univnet',
+            name=args.name,
+            resume='allow',
+            dir=os.path.join(hp.log.log_dir, 'wandb'))
+    return wandb.run.id
+
+
 def train(rank, args, chkpt_path, hp, hp_str):
 
     if args.num_gpus > 1:
@@ -85,6 +99,7 @@ def train(rank, args, chkpt_path, hp, hp_str):
         optim_d.load_state_dict(checkpoint['optim_d'])
         step = checkpoint['step']
         init_epoch = checkpoint['epoch']
+        run_id = checkpoint['run_id']
 
         if rank == 0:
             if hp_str != checkpoint['hp_str']:
@@ -103,11 +118,13 @@ def train(rank, args, chkpt_path, hp, hp_str):
         model_d = DistributedDataParallel(model_d, device_ids=[rank]).to(device)
 
     if hp.log.use_wandb:
-        wandb.init(
-            project='vocodec_univnet',
-            name=args.name,
-            resume='allow',
-            dir=os.path.join(hp.log.log_dir, 'wandb'))
+        run_id = setup_wandb(hp, args, run_id=run_id if chkpt_path is not None else None)
+
+#        wandb.init(
+#            project='vocodec_univnet',
+#            name=args.name,
+#            resume='allow',
+#            dir=os.path.join(hp.log.log_dir, 'wandb'))
 
     # this accelerates training when the size of minibatch is always consistent.
     # if not consistent, it'll horribly slow down.
@@ -219,6 +236,7 @@ def train(rank, args, chkpt_path, hp, hp_str):
                 'step': step,
                 'epoch': epoch,
                 'hp_str': hp_str,
+                'run_id': run_id,
 #                'githash': githash,
             }, save_path)
             logger.info("Saved checkpoint to: %s" % save_path)

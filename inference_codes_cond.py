@@ -38,7 +38,7 @@ def main(args):
     with torch.no_grad():
         for codepath in tqdm.tqdm(glob.glob(os.path.join(args.input_folder, '*_codes.pth'))):
 
-            code = torch.load(codepath, map_location='cpu')
+            code = torch.load(codepath, map_location='cpu').int()
 
             if len(code.shape) == 1:
                 code = code.unsqueeze(0)

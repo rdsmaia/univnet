@@ -11,6 +11,8 @@ MAX_WAV_VALUE = 32768.0
 class FiLM(nn.Module):
     def __init__(self, hp):
         super(FiLM, self).__init__()
+        self.normalize_cond = hp.audio.normalize_cond
+
         self.gamma_nn = nn.Sequential(
             nn.Linear(
                in_features=hp.audio.speaker_cond_dim,
@@ -24,7 +26,15 @@ class FiLM(nn.Module):
                ),
         )
 
+        # Layer norm for conditioning vector
+        if hp.audio.normalize_cond:
+            self.layer_norm = nn.LayerNorm(hp.audio.speaker_cond_dim)
+
     def forward(self, s):
+
+        if self.normalize_cond:
+           s = self.layer_norm(s)
+
         gamma = self.gamma_nn(s)
         beta = self.beta_nn(s)
 
